@@ -30,16 +30,13 @@ export const resources = {
 type OptionalLocale = Exclude<SupportedLocale, keyof typeof resources>;
 
 const isOptionalLocale = (locale: SupportedLocale): locale is OptionalLocale =>
-  locale === "ja" || locale === "pl" || locale === "ru";
+  locale === "ja" || locale === "pl";
 
 const loadOptionalCatalog = async (locale: OptionalLocale) => {
   if (locale === "ja") {
     return (await import("./resources/ja")).ja;
   }
-  if (locale === "pl") {
-    return (await import("./resources/pl")).pl;
-  }
-  return (await import("./resources/ru")).ru;
+  return (await import("./resources/pl")).pl;
 };
 
 const ensureLocaleCatalog = async (locale: SupportedLocale) => {
@@ -56,7 +53,6 @@ void i18n.use(initReactI18next).init({
   fallbackLng: {
     ja: ["en-US"],
     pl: ["en-US"],
-    ru: ["en-US"],
     default: [defaultLocale],
   },
   supportedLngs: supportedLocales,

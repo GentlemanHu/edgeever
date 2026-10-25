@@ -16,7 +16,7 @@ export const useMobileSelectionAi = ({
 }: {
   client: MobileAiClient | null | undefined;
   editorRef: RefObject<LocalTiptapEditorRef | null>;
-  resolvedLocale: "zh-CN" | "en-US" | "ja" | "pl" | "ru";
+  resolvedLocale: "zh-CN" | "en-US" | "ja" | "pl";
   titleRef: RefObject<string>;
 }) => {
   const activeRequestRef = useRef<{ requestId: string; controller: AbortController } | null>(null);

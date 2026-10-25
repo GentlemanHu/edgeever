@@ -5,14 +5,12 @@ export const INFOGRAPHIC_SCHEMA_VERSION = 1 as const;
 export const INFOGRAPHIC_AGENT_SOURCE_MAX_LENGTH = 100_000;
 const MARKER = "edgeever-infographic-v1";
 const COMMENT = /<!--\s*edgeever-infographic-v1:([A-Za-z0-9_-]+)\s*-->/;
-const SESSION_ID = /^[A-Za-z0-9_-]{1,80}$/;
 
 export type InfographicDocument = {
   schemaVersion: typeof INFOGRAPHIC_SCHEMA_VERSION;
   // AntV Infographic's native source, separate from the visual diagram IR.
   syntax: string;
   history?: InfographicConversationTurn[];
-  activeSessionId?: string;
 };
 
 export type InfographicConversationTurn = {
@@ -26,7 +24,6 @@ export type InfographicConversationTurn = {
   template?: string;
   error?: string;
   undoneAt?: string;
-  sessionId?: string;
 };
 
 export const InfographicAgentRequestSchema = z.object({
@@ -93,17 +90,9 @@ export const parseInfographicDocument = (markdown: string | null | undefined): I
         && (value.decision === undefined || typeof value.decision === "string" && value.decision.length <= 500)
         && (value.template === undefined || typeof value.template === "string")
         && (value.error === undefined || typeof value.error === "string")
-        && (value.undoneAt === undefined || typeof value.undoneAt === "string")
-        && (value.sessionId === undefined || typeof value.sessionId === "string" && SESSION_ID.test(value.sessionId));
+        && (value.undoneAt === undefined || typeof value.undoneAt === "string");
     }))) return null;
-    const activeSessionId = document.activeSessionId;
-    if (activeSessionId !== undefined && (typeof activeSessionId !== "string" || !SESSION_ID.test(activeSessionId))) return null;
-    return {
-      schemaVersion: INFOGRAPHIC_SCHEMA_VERSION,
-      syntax: document.syntax,
-      ...(history ? { history: history as InfographicConversationTurn[] } : {}),
-      ...(typeof activeSessionId === "string" ? { activeSessionId } : {}),
-    };
+    return { schemaVersion: INFOGRAPHIC_SCHEMA_VERSION, syntax: document.syntax, ...(history ? { history: history as InfographicConversationTurn[] } : {}) };
   } catch {
     return null;
   }

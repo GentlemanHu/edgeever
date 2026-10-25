@@ -25,8 +25,6 @@ import { readAiSidebarAdapter, readAiSidebarSource } from "@/lib/desktop-acp";
 import { buildInfographicLocalAgentContext, collectInfographicLocalAgentText, infographicLocalAgentErrorKey, parseInfographicLocalReply } from "@/lib/infographic-local-agent";
 import { formatShortcutBinding, getNotebookMoveOptions, type ShortcutSettings } from "@/lib/app-helpers";
 import { createLocalEditSession, requiresLocalEditSession } from "@/components/editor/editor-pane-helpers";
-import { createClientUuid } from "@/lib/client-id";
-import { infographicSessionHistory, infographicSessionStamp, infographicSessionThreads, infographicTurnSessionId, resolveInfographicSessionId } from "@/lib/infographic-sessions";
 import { canvasToPngBlob, downloadBlob, frameInfographicExportSvg, infographicExportBasename, rasterizeInfographicSvg, readInfographicSheetColor } from "@/lib/infographic-image-export";
 import { buildInfographicSyntax, buildOfficialInfographicSyntax, infographicAgentCandidates, infographicNoteTitleIsAutomatic, infographicSyntaxTitle, INFOGRAPHIC_TEMPLATES, nextInfographicNoteTitle, parseGeneratedOfficialData, type InfographicItem } from "@/lib/infographic-generation";
 import { statusSettleMotion } from "@/lib/motion";
@@ -45,9 +43,6 @@ type Props = {
   onToggleDesktopFocusMode: () => void;
   aiAssistantOpenToken: number;
   shortcutSettings: ShortcutSettings;
-  companionAvailable?: boolean;
-  beforeCompanionApply?: () => Promise<void>;
-  onCompanionNotesChanged?: () => Promise<void>;
   onOpenCompanionNote?: (id: string, notebookId: string) => void;
 };
 
@@ -204,9 +199,6 @@ export default function InfographicEditorPane({
   onToggleDesktopFocusMode,
   aiAssistantOpenToken,
   shortcutSettings,
-  companionAvailable = false,
-  beforeCompanionApply,
-  onCompanionNotesChanged,
   onOpenCompanionNote,
 }: Props) {
   const { t, i18n } = useTranslation();
@@ -222,7 +214,6 @@ export default function InfographicEditorPane({
   const [tagsText, setTagsText] = useState(initialTags);
   const [syntax, setSyntax] = useState(parsed?.syntax ?? "");
   const [history, setHistory] = useState<InfographicConversationTurn[]>(parsed?.history ?? []);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(parsed?.activeSessionId ?? null);
   const [activeTurn, setActiveTurn] = useState<{ prompt: string; response: string; template?: string; decision?: string; question?: string } | null>(null);
   const [aiAssistantOpen, setAiAssistantOpenState] = useState(readAiSidebarOpen);
   const [previousGeneration, setPreviousGeneration] = useState<{ title: string; syntax: string; turnId: string } | null>(null);
@@ -232,7 +223,7 @@ export default function InfographicEditorPane({
   const [renderError, setRenderError] = useState<string | null>(null);
   const [previewReady, setPreviewReady] = useState(false);
   const [ready, setReady] = useState(false);
-  const [savedSnapshot, setSavedSnapshot] = useState(JSON.stringify([memo.title ?? "", parsed?.syntax ?? "", parsed?.history ?? [], initialTags, parsed?.activeSessionId ?? null]));
+  const [savedSnapshot, setSavedSnapshot] = useState(JSON.stringify([memo.title ?? "", parsed?.syntax ?? "", parsed?.history ?? [], initialTags]));
   const [savedHistorySnapshot, setSavedHistorySnapshot] = useState(JSON.stringify(parsed?.history ?? []));
   const [galleryDialogOpen, setGalleryDialogOpen] = useState(false);
   const [mobileNotebookSheetOpen, setMobileNotebookSheetOpen] = useState(false);
@@ -248,8 +239,7 @@ export default function InfographicEditorPane({
   const memoRef = useRef(memo);
   const tagsRef = useRef(initialTags);
   const saveRef = useRef<() => boolean | Promise<boolean>>(() => false);
-  const snapshotSessionId = readOnly ? (parsed?.activeSessionId ?? null) : activeSessionId;
-  const snapshot = JSON.stringify([title, syntax, history, tagsText, snapshotSessionId]);
+  const snapshot = JSON.stringify([title, syntax, history, tagsText]);
   const notebookOptions = useMemo(() => getNotebookMoveOptions(notebooks), [notebooks]);
   const dirty = snapshot !== savedSnapshot;
   const historyDirty = JSON.stringify(history) !== savedHistorySnapshot;
@@ -405,7 +395,7 @@ export default function InfographicEditorPane({
     }
     const currentMemo = memoRef.current;
     const currentSnapshot = snapshot;
-    const document: InfographicDocument = { schemaVersion: 1, syntax, ...(history.length ? { history } : {}), ...(activeSessionId ? { activeSessionId } : {}) };
+    const document: InfographicDocument = { schemaVersion: 1, syntax, ...(history.length ? { history } : {}) };
     setSaving(true); setError(null);
     try {
       const result = await repository.updateMemo(currentMemo, {
@@ -493,8 +483,6 @@ export default function InfographicEditorPane({
     let response = "";
     let proposal: { template: string; data: Record<string, unknown>; explanation: string } | null = null;
     let question = "";
-    const viewingSessionId = resolveInfographicSessionId(history, activeSessionId);
-    const sessionStamp = infographicSessionStamp(viewingSessionId);
     try {
       const { parseSyntax, getTemplate, getTemplates } = await import("@antv/infographic");
       const existingOptions = parseSyntax(syntax).options;
@@ -504,8 +492,8 @@ export default function InfographicEditorPane({
       if (currentContent.length > INFOGRAPHIC_AGENT_SOURCE_MAX_LENGTH) throw new Error(t("infographic.contentTooLarge"));
       const candidates = infographicAgentCandidates(promptText, getTemplates(), existingTemplate);
       if (!candidates.length) throw new Error(t("infographic.aiInvalidResponse"));
-      const agentHistory = infographicSessionHistory(history, viewingSessionId)
-        .map((turn) => ({ prompt: turn.prompt, response: `${turn.kind === "clarified" ? "No infographic change was applied. Clarification: " : ""}${turn.response || turn.resultTitle}${turn.decision ? `\nDecision: ${turn.decision}` : ""}`.slice(0, 2000) }));
+      const agentHistory = history.filter((turn) => !turn.undoneAt && turn.kind !== "failed")
+        .slice(-12).map((turn) => ({ prompt: turn.prompt, response: `${turn.kind === "clarified" ? "No infographic change was applied. Clarification: " : ""}${turn.response || turn.resultTitle}${turn.decision ? `\nDecision: ${turn.decision}` : ""}`.slice(0, 2000) }));
       if (readAiSidebarSource() === "local") {
         const adapter = readAiSidebarAdapter();
         if (!adapter) throw new Error(t("aiAssistant.sidebar.localMissing"));
@@ -592,18 +580,17 @@ export default function InfographicEditorPane({
           id: turnId, prompt: promptText, createdAt: new Date().toISOString(),
           kind: syntax.trim() ? "refined" : "generated", resultTitle: generatedTitle,
           response: (response.trim() || selected.explanation).slice(0, 4000), decision: selected.explanation.slice(0, 500), template: selected.template,
-          ...sessionStamp,
         }]);
         setSyntax(candidate);
         if (nextTitle !== title) setTitle(nextTitle);
       } else if (question) {
-        setHistory((turns) => [...turns, { id: crypto.randomUUID(), prompt: promptText, createdAt: new Date().toISOString(), kind: "clarified", resultTitle: "", response: (response.trim() || question).slice(0, 4000), ...sessionStamp }]);
+        setHistory((turns) => [...turns, { id: crypto.randomUUID(), prompt: promptText, createdAt: new Date().toISOString(), kind: "clarified", resultTitle: "", response: (response.trim() || question).slice(0, 4000) }]);
       } else throw new Error(t("infographic.aiInvalidResponse"));
     } catch (caught) {
       if (controller.signal.aborted) throw caught;
       const messageText = caught instanceof Error ? caught.message : t("infographic.aiError");
       setError(messageText);
-      setHistory((turns) => [...turns, { id: crypto.randomUUID(), prompt: promptText, createdAt: new Date().toISOString(), kind: "failed", resultTitle: "", response: response.slice(0, 4000), error: messageText.slice(0, 1000), ...sessionStamp }]);
+      setHistory((turns) => [...turns, { id: crypto.randomUUID(), prompt: promptText, createdAt: new Date().toISOString(), kind: "failed", resultTitle: "", response: response.slice(0, 4000), error: messageText.slice(0, 1000) }]);
       throw caught instanceof Error ? caught : new Error(messageText);
     } finally { if (generationControllerRef.current === controller) generationControllerRef.current = null; setActiveTurn(null); setGenerating(false); }
   };
@@ -631,27 +618,16 @@ export default function InfographicEditorPane({
   const saveStatus = saving ? "saving" : dirty ? "unsaved" : "saved";
   const saveLabel = t(`editor.saveState.${saveStatus}`);
   const saveStatusClassName = saveStatus === "saved" ? "text-slate-400" : "bg-slate-100 text-slate-700";
-  const viewingSessionId = resolveInfographicSessionId(history, activeSessionId);
   const infographicAssistant: InfographicSidebarController = {
     turns: history,
     activeTurn,
     generating,
     readOnly,
-    canUndo: Boolean(previousGeneration && history.some((turn) => turn.id === previousGeneration.turnId && infographicTurnSessionId(turn) === viewingSessionId && !turn.undoneAt)),
+    canUndo: Boolean(previousGeneration),
     hasGraphic: Boolean(syntax.trim()),
-    activeSessionId,
     onSubmit: generate,
     onUndo: undoGeneration,
     onStop: () => generationControllerRef.current?.abort(),
-    onSelectSession: (sessionId) => {
-      if (generating) return;
-      setActiveSessionId(sessionId);
-    },
-    onCreateSession: () => {
-      if (generating || readOnly) return;
-      if (!infographicSessionThreads(history).some((thread) => thread.id === viewingSessionId)) return;
-      setActiveSessionId(createClientUuid());
-    },
   };
 
   return <div className="relative flex h-full min-h-0 min-w-0 bg-card text-foreground">
@@ -806,9 +782,7 @@ export default function InfographicEditorPane({
       <AiSidebar
         open={aiAssistantOpen}
         onOpenChange={setAiSidebarOpen}
-        companionAvailable={companionAvailable}
-        beforeCompanionApply={beforeCompanionApply}
-        onCompanionNotesChanged={onCompanionNotesChanged}
+        companionAvailable={false}
         contentMarkdown={syntax}
         memoId={memo.id}
         notebookId={memo.notebookId}

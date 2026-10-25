@@ -111,7 +111,6 @@ export const getDefaultAiTargetLanguage = (locale: string | undefined): AiTarget
   if (normalized.startsWith("zh")) return "en";
   if (normalized.startsWith("ja")) return "ja";
   if (normalized.startsWith("pl")) return "en";
-  if (normalized.startsWith("ru")) return "en";
   return "zh-CN";
 };
 

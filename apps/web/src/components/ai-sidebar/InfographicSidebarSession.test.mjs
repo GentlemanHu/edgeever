@@ -25,15 +25,12 @@ const session = {
     response: "见 [流程图](#memo=memo_03de025fc0134b7da0d155c2c1686b92)",
   },
   generating: false,
-  readOnly: false,
+  readOnly: true,
   canUndo: false,
   hasGraphic: true,
-  activeSessionId: null,
   async onSubmit() {},
   onUndo() {},
   onStop() {},
-  onSelectSession() {},
-  onCreateSession() {},
 };
 
 describe("infographic sidebar note links", () => {
@@ -48,6 +45,8 @@ describe("infographic sidebar note links", () => {
         { i18n },
         createElement(InfographicSidebarSession, {
           session,
+          noteTitle: "演进里程碑",
+          onOpenChange() {},
           onOpenNote() {},
         }),
       ),
